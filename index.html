@@ -1,0 +1,156 @@
+<!DOCTYPE HTML>
+<html>
+    <head>
+        <title>Vote Chain</title>
+        <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/web3@1.3.5/dist/web3.min.js"></script>
+        <script>
+            (()=>{
+                const etherregex = new RegExp('^0x[a-fA-F0-9]{40}$');
+                const w = (wx, cb)=>{alert(wx); cb();};
+                const items={title: "title",
+                 login: 'button[x="login"]',
+                 abi: "textarea[name=\"Contractabi\"]", 
+                 addr: "input[name=\"ContractAdress\"]", 
+                 votedStatus: 'h3[x="status"]',
+                 voteBTNS: 'div[x="voteFields"]',
+                 btny: "button[x=\"votea\"",
+                 btnn: "button[x=\"voteb\"",
+                 vodi: "div[x=\"votes\"]",
+                 btvote: "button[x=\"loadvotes\"]",
+                 vstat: 'p[x="statvote"]',
+                 donor: 'p[x="donate"]'
+                };
+                $(document).ready(()=>{
+                    try{
+                        (()=>{
+                            const xx=localStorage.getItem("csett");
+                            if(xx){
+                                const csett=JSON.parse(atob(xx));
+                                if(csett.abi)
+                                    $(items.abi).val(csett.abi);
+                                else {
+                                    $.get( "voteABI.json", function( data ) {
+                                        $(items.abi).val(JSON.stringify(data));
+                                    }, "json");
+                                }
+                                if(csett.addr)
+                                    $(items.addr).val(csett.addr);
+                            }
+                        })();
+                        const loginitems={login: items.login, abi: items.abi, addr: items.addr};
+                        $(loginitems.login).click(async ()=>{
+                            if($(loginitems.addr).val().match(etherregex)){
+                                try{
+                                    for(let e of Object.entries(loginitems)){
+                                        $(e[1]).attr("disabled", true);
+                                    }
+                                    const web3 = new Web3(Web3.givenProvider || window.ethereum || "ws://localhost:8545");
+                                    await window.ethereum.enable();
+                                    const contractsettings={abi:$(loginitems.abi).val(), addr:$(loginitems.addr).val()};
+                                    localStorage.setItem("csett", btoa(JSON.stringify(contractsettings)));
+                                    const NameContract = new web3.eth.Contract(JSON.parse(contractsettings.abi), contractsettings.addr);
+                                    const voted=await NameContract.methods.haveIVoted().call();
+                                    const title=await NameContract.methods.getTitle().call();
+                                    const beiamowner=await NameContract.methods.beIOwner().call();
+                                    console.log(`I am ${beiamowner?"":"not "}owner`);
+                                    $(items.donor).html($(items.donor).html().replace("{0}", (await NameContract.methods.getOwner().call()).toString()));
+                                    $(items.donor).attr("hidden", false);
+                                    $(items.vodi).attr("hidden", false);
+                                    const origin=$(items.vstat).text();
+                                    const vo=async ()=>{
+                                        try{
+                                            const va=await NameContract.methods.gVotes(true).call(),
+                                            vb = await NameContract.methods.gVotes(false).call();
+                                            $(items.vstat).text(origin.replace("{1}", vb.toString()).replace("{0}", va.toString()));
+                                        }catch(e){
+                                            w("Something went wrong duing load", ()=>{console.error(e);})
+                                        }
+                                    };
+                                    vo();
+                                    $(items.btvote).click(vo);
+                                    $(items.title).text(`${$(items.title).text()} - ${title}`);
+                                    if(!voted){
+                                        $(items.votedStatus).text(title);
+                                        $(items.votedStatus).attr("hidden", false);
+                                        $(items.voteBTNS).attr("hidden", false);
+                                        const doit = async (x)=>{
+                                            try {
+                                                const wallet=await web3.eth.getAccounts();
+                                                console.log("Use Account " + wallet);
+                                                const choosenone=(wallet[0]!=undefined)?wallet[0]:wallet.toString(),
+                                                    ethers=await web3.utils.fromWei(await web3.eth.getBalance(choosenone), "ether");
+                                                if(ethers!=0){
+                                                    if(confirm(`Are you sure to start a call to ${choosenone}?\nThis account have ${ethers} ether`)){
+                                                       $(items.voteBTNS).attr("hidden", true);
+                                                       await NameContract.methods.voteNow(x).send({from: choosenone});
+                                                    }
+                                                }else{
+                                                    w(`You have ${ethers} ether on the account ${choosenone}!`, ()=>{});
+                                                }
+                                            }catch(e){
+                                                w("An error occured duing send your vote\nIt could be that you rejected the transaction!", ()=>{console.error(e);});
+                                            }
+                                        };
+                                        $(items.btnn).click(async ()=>{ await doit(false);});
+                                        $(items.btny).click(async ()=>{ await doit(true);});
+                                    }else{
+                                        $(items.votedStatus).attr("hidden", false);
+                                    }
+                                }catch(e){
+                                    console.error(e);
+                                    w("Something went Wrong\nDid you entered the correct information?\nIs MetaMask Correctly installed?\nLook in the Dev Console for more Information", ()=>{document.location.reload();});
+                                }
+                            }else{
+                                w("Enter Correct address!", ()=>{console.warn("Wrong ADDRESS");});
+                            }
+                        });
+                    }catch(e){
+                        console.warn(e);
+                    }
+                });
+            })();
+        </script>
+        <style>
+            textarea[name="Contractabi"]{
+                resize: vertical;
+                width: 100%;
+                min-height: 200px;
+                min-width: 200px;
+                max-height: 100vh;
+            }
+            input[name="ContractAdress"]{
+                width: 100%;
+                max-width: 400px;
+                line-height: 2;
+            }
+        </style>
+    </head>
+    <body>
+        <noscript>This Application need JS enabled</noscript>
+        <div>
+            <label for="Contractabi">Contract ABI:</label>
+            <textarea type="text" name="Contractabi"></textarea>
+        </div>
+        <div>
+            <label for="ContractAdress">Contract Adress (Adress of <code>Vote.sol</code>):</label>
+            <input type="text" name="ContractAdress" maxlength="42" minlength="40">
+        </div>
+        <div>
+            <button x="login">Login</button>
+        </div>
+        <h3 x="status" hidden>You have Voted, you can't vote again!</h3>
+        <div x="voteFields" hidden>
+            <button x="votea">Yes</button>
+            <button x="voteb">No</button>
+        </div>
+        <div x="votes" hidden>
+            <p x="statvote">{0}/{1} users voted for Yes</p>
+            <button x="loadvotes">Reload Votes</button>
+        </div>
+        <p x="donate" hidden>Donate to this Ethereum address to make these apps possible: <code>{0}</code></p>
+        <p>This Application needs MetaMask installed and connected with the network where <code>Vote.sol</code> runs!</p>
+        <p>To Vote, you need ether on your MetaMask account!</p>
+        <p>&copy; Sharkbyteprojects</p>
+    </body>
+</html>
